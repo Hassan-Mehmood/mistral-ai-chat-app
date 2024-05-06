@@ -1,8 +1,6 @@
 import streamlit as st
-from langchain_core.messages import AIMessage, HumanMessage
-from langchain_mistralai.chat_models import ChatMistralAI
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
+from mistralai.client import MistralClient
+from mistralai.models.chat_completion import ChatMessage
 
 import dotenv
 dotenv.load_dotenv('.env')
@@ -16,43 +14,39 @@ st.set_page_config(
 
 st.title("Chat with Mistral AI")
 
-# Checking if 'chat_history' exists in the session state
-if 'chat_history' not in st.session_state:
-	st.session_state.chat_history = [
-		AIMessage(content="Hi, I'm Mistral AI. How can I help you today?")
+if 'chat_messages' not in st.session_state:
+	st.session_state.chat_messages = [
+		ChatMessage(role='assistant' ,content="Hi, I'm Mistral AI. How can I help you today?")
 	]
 
-def get_sql_chain():
-	chat = ChatMistralAI(model_name='open-mixtral-8x7b', api_key=api_key)
-	
-	prompt = ChatPromptTemplate.from_template("This is your chat history so far: {chat_history}. You are an asistant and you will answer questions. Here is the question: {question}")
-	chain = prompt | chat | StrOutputParser()
+def get_mistral_client():
+	return MistralClient(api_key=api_key)
 
-	return chain
-
-for message in st.session_state.chat_history:
-	if isinstance(message, AIMessage):
-		with st.chat_message('AI'):
+for message in st.session_state.chat_messages:
+	if message.role == 'user':
+		with st.chat_message('User'):
 			st.markdown(message.content)
 	else:
-		with st.chat_message('User'):
-			st.markdown(message)
+		with st.chat_message('AI'):
+			st.markdown(message.content)
 
 # User input field
 user_input = st.chat_input("Ask a question... ")
 
 # Add user input to chat history
 if user_input is not None and user_input.strip() != "":
-	st.session_state.chat_history.append(HumanMessage(content=user_input))
+	print(f'User: {user_input}')
+	st.session_state.chat_messages.append(ChatMessage(role='user', content=user_input))
 
 	with st.chat_message('Human'):
 		st.markdown(user_input)
 
 	with st.chat_message('AI'):
-		sql_chain = get_sql_chain()
-		response = sql_chain.invoke({
-			'chat_history': st.session_state.chat_history,
-			'question': user_input
-		})
-		st.session_state.chat_history.append(AIMessage(content=response))
-		st.markdown(response)
+		client = get_mistral_client()
+		
+		response = client.chat(model='open-mixtral-8x7b', messages=st.session_state.chat_messages)
+		response_content = response.choices[0].message.content
+
+		print(f'Mistral AI: {response_content}')
+		st.session_state.chat_messages.append(ChatMessage(role='assistant', content=response_content))
+		st.markdown(response_content)
